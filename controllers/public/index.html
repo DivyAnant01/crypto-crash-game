@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Crypto Crash Game</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      margin: 0; 
+      padding: 0; 
+      background: #121212; 
+      color: #f0f0f0; 
+    }
+    h1 { margin-top: 20px; color: #00ffcc; }
+    .multiplier {
+      font-size: 50px; 
+      margin: 20px; 
+      color: #00ff00;
+    }
+    .crash {
+      color: #ff0033;
+      font-size: 24px;
+    }
+    .form-section {
+      background: #1f1f1f; 
+      padding: 20px; 
+      margin: 20px auto; 
+      width: 300px; 
+      border-radius: 10px; 
+      box-shadow: 0 0 10px #00ffcc50;
+    }
+    input, select, button {
+      margin: 10px 0;
+      padding: 8px;
+      width: 90%;
+      border: none;
+      border-radius: 5px;
+    }
+    button {
+      background: #00ffcc;
+      color: #121212;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #00cc99;
+    }
+    #statusBar {
+      margin-top: 10px;
+      font-size: 18px;
+    }
+    .history {
+      margin-top: 20px;
+      font-size: 16px;
+    }
+    #wallet {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Crypto Crash 💥</h1>
+
+  <div id="statusBar">Status: Waiting for next round...</div>
+  <div id="multiplier" class="multiplier">Multiplier: 1x</div>
+  <div id="crash-info"></div>
+
+  <div class="form-section">
+    <h3>Place Your Bet</h3>
+    <input id="username" placeholder="Username" /><br/>
+    <input id="usdAmount" type="number" placeholder="USD Amount" /><br/>
+    <select id="currency">
+      <option value="BTC">BTC</option>
+      <option value="ETH">ETH</option>
+    </select><br/>
+    <button onclick="placeBet()">Place Bet</button>
+    <button onclick="cashout()">Cash Out</button>
+
+    <h4>Your Wallet</h4>
+    <button onclick="checkWallet()">Refresh Balance</button>
+    <div id="wallet">BTC: -- | ETH: --</div>
+  </div>
+
+  <div class="history">
+    <h3>Recent Crash History</h3>
+    <ul id="historyList" style="list-style: none; padding: 0;"></ul>
+  </div>
+
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <script>
+    const socket = io('http://localhost:5000'); // Change to deployed URL later
+    let history = [];
+
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socket.on('round_start', data => {
+      document.getElementById('statusBar').innerText = 'Status: New Round Started';
+      document.getElementById('crash-info').innerHTML = '';
+    });
+
+    socket.on('multiplier_update', data => {
+      document.getElementById('multiplier').innerText = 'Multiplier: ' + data.multiplier + 'x';
+    });
+
+    socket.on('round_crash', data => {
+      document.getElementById('statusBar').innerText = '💥 Crashed at ' + data.crashPoint + 'x';
+      document.getElementById('crash-info').innerHTML = `
+        <p class="crash">Crash Point: ${data.crashPoint}x</p>
+        <p>Seed: ${data.seed}</p>
+        <p>Hash: ${data.hash}</p>
+      `;
+      // Add to history
+      history.unshift(data.crashPoint);
+      if (history.length > 5) history.pop();
+      updateHistory();
+    });
+
+    socket.on('player_cashout', data => {
+      alert(`✅ ${data.username} cashed out at ${data.multiplier}x and won ${data.usdPayout} USD`);
+    });
+
+    function updateHistory() {
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+      history.forEach((point, index) => {
+        const li = document.createElement('li');
+        li.innerText = `#${index + 1}: ${point}x`;
+        list.appendChild(li);
+      });
+    }
+
+    function placeBet() {
+      const username = document.getElementById('username').value;
+      const usdAmount = document.getElementById('usdAmount').value;
+      const currency = document.getElementById('currency').value;
+
+      axios.post('http://localhost:5000/api/bet', {
+        username, usdAmount, currency
+      })
+      .then(res => {
+        alert('✅ Bet placed! Round ID: ' + res.data.roundId);
+        checkWallet();
+      })
+      .catch(err => {
+        alert('❌ Error: ' + err.response.data.error);
+      });
+    }
+
+    function cashout() {
+      const username = document.getElementById('username').value;
+      socket.emit('cashout_request', { username });
+    }
+
+    function checkWallet() {
+      const username = document.getElementById('username').value;
+      axios.get(`http://localhost:5000/api/wallet/${username}`)
+      .then(res => {
+        const w = res.data;
+        document.getElementById('wallet').innerHTML = `
+          BTC: ${w.walletCrypto.BTC} (${w.walletUSD.BTC} USD)<br/>
+          ETH: ${w.walletCrypto.ETH} (${w.walletUSD.ETH} USD)
+        `;
+      })
+      .catch(err => {
+        alert('Wallet error');
+      });
+    }
+  </script>
+</body>
+</html>
